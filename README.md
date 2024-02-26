@@ -20,7 +20,7 @@
 
 ### How to test the application
 
-* Swagger Url: http://localhost:8001/swagger-ui/index.html
+* Swagger Url: http://localhost:8001/swagger-ui.html
 * Actuator Url: http://localhost:8001/actuator
 * Metric Url: http://localhost:8001/actuator/metrics
 * Run `mvn test` command to run all the tests

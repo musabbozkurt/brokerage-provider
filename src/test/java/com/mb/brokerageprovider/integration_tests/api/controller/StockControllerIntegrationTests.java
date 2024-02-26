@@ -1,11 +1,8 @@
 package com.mb.brokerageprovider.integration_tests.api.controller;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mb.brokerageprovider.api.request.ApiStockRequest;
 import com.mb.brokerageprovider.api.response.ApiStockResponse;
 import com.mb.brokerageprovider.base.BaseUnitTest;
-import com.mb.brokerageprovider.config.RestResponsePage;
 import com.mb.brokerageprovider.config.annotation.EnableTestcontainers;
 import com.mb.brokerageprovider.exception.BaseException;
 import com.mb.brokerageprovider.exception.BrokerageProviderErrorCode;
@@ -17,37 +14,31 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Mono;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.BDDAssertions.then;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
 
 @SpringBootTest
 @EnableTestcontainers
-@AutoConfigureMockMvc
+@AutoConfigureWebTestClient
 @ActiveProfiles("test-containers")
 @TestMethodOrder(OrderAnnotation.class)
 public class StockControllerIntegrationTests extends BaseUnitTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webTestClient;
 
     @Autowired
     private StockService stockService;
 
     @Autowired
     private StockMapper stockMapper;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Test
     @Order(value = 1)
@@ -58,134 +49,87 @@ public class StockControllerIntegrationTests extends BaseUnitTest {
 
     @Test
     @Order(value = 2)
-    void testGetAllStocks() throws Exception {
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .get("/stocks/")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status()
-                        .isOk())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-        Page<ApiStockResponse> apiUserResponses = objectMapper.readValue(content, new TypeReference<RestResponsePage<ApiStockResponse>>() {
-        });
-
-        then(apiUserResponses.getContent()).isNotEmpty();
-        assertThat(apiUserResponses.getContent()).hasSizeGreaterThanOrEqualTo(2);
+    void testGetAllStocks() {
+        webTestClient.get().uri("/stocks/")
+                .accept(MediaType.APPLICATION_JSON)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.content").isArray()
+                .jsonPath("$.content.length()").isNumber()
+                .jsonPath("$.content").value(hasSize(greaterThanOrEqualTo(2)));
     }
 
     @Test
     @Order(value = 3)
-    void testGetStockById() throws Exception {
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .get("/stocks/5")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status()
-                        .isOk())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        ApiStockResponse apiStockResponse = objectMapper.readValue(content, ApiStockResponse.class);
-
-        then(apiStockResponse).isNotNull();
-        Assertions.assertEquals("APPLE", apiStockResponse.getProductCode());
+    void testGetStockById() {
+        webTestClient.get().uri("/stocks/5")
+                .accept(MediaType.APPLICATION_JSON)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ApiStockResponse.class)
+                .value(apiStockResponse -> Assertions.assertEquals("APPLE", apiStockResponse.getProductCode()));
     }
 
     @Test
     @Order(value = 4)
-    void testGetStockById_ShouldFail_WhenStockIsNotFound() throws Exception {
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .get("/stocks/0")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status()
-                        .isNotFound())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        BaseException baseException = objectMapper.readValue(content, BaseException.class);
-
-        then(baseException).isNotNull();
-        Assertions.assertEquals(BrokerageProviderErrorCode.STOCK_NOT_FOUND, baseException.getErrorCode());
+    void testGetStockById_ShouldFail_WhenStockIsNotFound() {
+        webTestClient.get().uri("/stocks/0")
+                .accept(MediaType.APPLICATION_JSON)
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody(BaseException.class)
+                .value(baseException -> Assertions.assertEquals(BrokerageProviderErrorCode.STOCK_NOT_FOUND, baseException.getErrorCode()));
     }
 
     @Test
     @Order(value = 5)
-    void testCreateStock() throws Exception {
+    void testCreateStock() {
         ApiStockRequest apiStockRequest = getApiStockRequest();
-        String stock = objectMapper.writeValueAsString(apiStockRequest);
 
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .post("/stocks/")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(stock))
-                .andExpect(status()
-                        .isCreated())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        ApiStockResponse apiStockResponse = objectMapper.readValue(content, ApiStockResponse.class);
-
-        then(apiStockResponse).isNotNull();
-        Assertions.assertEquals(apiStockResponse.getQuantity(), apiStockRequest.getQuantity());
-        Assertions.assertEquals(apiStockResponse.getProductCode(), apiStockRequest.getProductCode());
+        webTestClient.post().uri("/stocks/")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Mono.just(apiStockRequest), ApiStockRequest.class)
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(ApiStockResponse.class)
+                .value(apiStockResponse -> {
+                    Assertions.assertEquals(apiStockResponse.getQuantity(), apiStockRequest.getQuantity());
+                    Assertions.assertEquals(apiStockResponse.getProductCode(), apiStockRequest.getProductCode());
+                });
     }
 
     @Test
     @Order(value = 6)
-    void testCreateStock_ShouldFail_WhenProductCodeIsAlreadyExists() throws Exception {
+    void testCreateStock_ShouldFail_WhenProductCodeIsAlreadyExists() {
         ApiStockRequest apiStockRequest = getApiStockRequest2();
-        String stock = objectMapper.writeValueAsString(apiStockRequest);
 
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .post("/stocks/")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(stock))
-                .andExpect(status()
-                        .isBadRequest())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        BaseException baseException = objectMapper.readValue(content, BaseException.class);
-
-        then(baseException).isNotNull();
-        Assertions.assertEquals(BrokerageProviderErrorCode.UNEXPECTED_ERROR, baseException.getErrorCode());
+        webTestClient.post().uri("/stocks/")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Mono.just(apiStockRequest), ApiStockRequest.class)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(BaseException.class)
+                .value(baseException -> Assertions.assertEquals(BrokerageProviderErrorCode.UNEXPECTED_ERROR, baseException.getErrorCode()));
     }
 
     @Test
     @Order(value = 7)
-    void testDeleteStock() throws Exception {
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .delete("/stocks/5")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status()
-                        .isOk())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        then(content).isNotNull();
-        Assertions.assertEquals("Stock deleted successfully.", content);
+    void testDeleteStock() {
+        webTestClient.delete().uri("/stocks/5")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(content -> Assertions.assertEquals("Stock deleted successfully.", content));
     }
 
     @Test
     @Order(value = 8)
-    void testDeleteStock_ShouldFail_WhenStockIsNotFound() throws Exception {
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders
-                        .delete("/stocks/1")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status()
-                        .isNotFound())
-                .andReturn();
-
-        String content = mvcResult.getResponse().getContentAsString();
-
-        BaseException baseException = objectMapper.readValue(content, BaseException.class);
-
-        then(baseException).isNotNull();
-        Assertions.assertEquals(BrokerageProviderErrorCode.STOCK_NOT_FOUND, baseException.getErrorCode());
+    void testDeleteStock_ShouldFail_WhenStockIsNotFound() {
+        webTestClient.delete().uri("/stocks/1")
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody(BaseException.class)
+                .value(baseException -> Assertions.assertEquals(BrokerageProviderErrorCode.STOCK_NOT_FOUND, baseException.getErrorCode()));
     }
 }
