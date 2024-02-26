@@ -32,7 +32,7 @@ import static org.hamcrest.Matchers.hasSize;
 public class OrderControllerIntegrationTests extends BaseUnitTest {
 
     @Autowired
-    protected WebTestClient webTestClient;
+    private WebTestClient webTestClient;
 
     @Autowired
     private OrderService orderService;
